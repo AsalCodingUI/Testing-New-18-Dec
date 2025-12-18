@@ -5,6 +5,11 @@
   "endOfLine": "lf",
   "semi": false,
   "tabWidth": 2,
-  "plugins": ["prettier-plugin-tailwindcss"],
-  "tailwindFunctions": ["tv", "cx"]
+  "plugins": [
+    "prettier-plugin-tailwindcss"
+  ],
+  "tailwindFunctions": [
+    "tv",
+    "cx"
+  ]
 }

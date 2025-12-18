@@ -1,10 +1,9 @@
-import { Button } from "@/components/Button"
-import { Card } from "@/components/Card"
-import { StatsCard } from "@/components/StatsCard"
 import { createClient } from "@/lib/supabase/server"
-import { RiCalendarLine, RiFileTextLine, RiTeamLine, RiUserLine } from "@remixicon/react"
-import Link from "next/link"
 import { redirect } from "next/navigation"
+import { getAdminDashboardData } from "./actions/dashboard-admin-actions"
+import { getEmployeeDashboardData } from "./actions/dashboard-employee-actions"
+import { AdminDashboard } from "./components/AdminDashboard"
+import { EmployeeDashboard } from "./components/EmployeeDashboard"
 
 export default async function DashboardPage() {
     const supabase = await createClient()
@@ -12,109 +11,53 @@ export default async function DashboardPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect("/login")
 
-    // Get user profile
+    // Get user profile to determine role
     const { data: profile } = await supabase
         .from("profiles")
-        .select("full_name, user_role")
+        .select("full_name, role")
         .eq("id", user.id)
         .single()
 
-    // Get leave balance
-    const { data: leaveData } = await supabase
-        .from("leave_balances")
-        .select("remaining")
-        .eq("user_id", user.id)
-        .single()
-
-    // Get active projects count
-    const { data: projects } = await supabase
-        .from("project_assignments")
-        .select(`
-            id,
-            projects!inner (status)
-        `)
-        .eq("user_id", user.id)
-        .eq("projects.status", "Active")
-
-    // Get pending reviews (if stakeholder/admin)
-    const isAdminOrStakeholder = profile?.user_role === 'Admin' || profile?.user_role === 'Stakeholder'
-    let pendingReviews = 0
-    if (isAdminOrStakeholder) {
-        const { count } = await supabase
-            .from("performance_reviews")
-            .select("*", { count: 'exact', head: true })
-            .is("self_score", null)
-        pendingReviews = count || 0
+    if (!profile) {
+        return (
+            <div className="text-center py-12">
+                <p className="text-content-subtle">Profile not found</p>
+            </div>
+        )
     }
 
-    return (
-        <div>
-            <div className="mb-8">
-                <h1 className="text-2xl font-semibold text-content dark:text-content">
-                    Welcome back, {profile?.full_name?.split(' ')[0] || 'User'}! 👋
-                </h1>
-                <p className="mt-1 text-sm text-content-subtle dark:text-content-placeholder">
-                    Here&apos;s what&apos;s happening with your work today
-                </p>
-            </div>
+    const isAdminOrStakeholder = profile.role === 'admin' || profile.role === 'stakeholder'
 
-            {/* Quick Stats */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
-                <StatsCard
-                    title="Leave Balance"
-                    value={`${leaveData?.remaining || 0} days`}
-                    icon={<RiCalendarLine className="size-5" />}
-                />
-                <StatsCard
-                    title="Active Projects"
-                    value={projects?.length || 0}
-                    icon={<RiFileTextLine className="size-5" />}
-                />
-                {isAdminOrStakeholder && (
-                    <StatsCard
-                        title="Pending Reviews"
-                        value={pendingReviews}
-                        icon={<RiUserLine className="size-5" />}
-                    />
-                )}
-            </div>
+    // Route to appropriate dashboard based on role
+    if (isAdminOrStakeholder) {
+        // Admin/Stakeholder Dashboard
+        const result = await getAdminDashboardData()
 
-            {/* Quick Actions */}
-            <Card>
-                <h2 className="text-lg font-semibold text-content dark:text-content mb-4">
-                    Quick Actions
-                </h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                    <Link href="/leave">
-                        <Button variant="secondary" className="w-full justify-start">
-                            <RiCalendarLine className="size-4 mr-2" />
-                            Request Leave
-                        </Button>
-                    </Link>
-                    <Link href="/performance">
-                        <Button variant="secondary" className="w-full justify-start">
-                            <RiUserLine className="size-4 mr-2" />
-                            View Performance
-                        </Button>
-                    </Link>
-                    {isAdminOrStakeholder && (
-                        <>
-                            <Link href="/teams">
-                                <Button variant="secondary" className="w-full justify-start">
-                                    <RiTeamLine className="size-4 mr-2" />
-                                    Manage Teams
-                                </Button>
-                            </Link>
-                            <Link href="/performance/review">
-                                <Button variant="secondary" className="w-full justify-start">
-                                    <RiFileTextLine className="size-4 mr-2" />
-                                    Review Employees
-                                </Button>
-                            </Link>
-                        </>
-                    )}
+        if (!result.success || !result.data) {
+            return (
+                <div className="text-center py-12">
+                    <p className="text-content-subtle">
+                        {result.error || "Failed to load dashboard data"}
+                    </p>
                 </div>
-            </Card>
-        </div>
-    )
+            )
+        }
+
+        return <AdminDashboard data={result.data} />
+    } else {
+        // Employee Dashboard
+        const result = await getEmployeeDashboardData()
+
+        if (!result.success || !result.data) {
+            return (
+                <div className="text-center py-12">
+                    <p className="text-content-subtle">
+                        {result.error || "Failed to load dashboard data"}
+                    </p>
+                </div>
+            )
+        }
+
+        return <EmployeeDashboard data={result.data} />
+    }
 }
